@@ -71,7 +71,11 @@ function(check_platform_supports_browse_mode RESULT)
 	set(${RESULT} "${PLATFORM_HAS_UNISTD_HEADER}" PARENT_SCOPE)
 endfunction()
 
-check_platform_supports_browse_mode(platform_supports_ninja_browse)
+if(WIN32)
+  set(platform_supports_ninja_browse FALSE)
+else()
+  check_platform_supports_browse_mode(platform_supports_ninja_browse)
+endif()
 
 # Core source files all build into ninja library.
 add_library(libninja OBJECT
