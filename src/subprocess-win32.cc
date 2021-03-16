@@ -109,10 +109,22 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
 
   // Do not prepend 'cmd /c' on Windows, this breaks command
   // lines greater than 8,191 chars.
-  if (!CreateProcessA(NULL, (char*)command.c_str(), NULL, NULL,
+
+  // The limit is actually 32,767 characters, and without cmd.exe
+  // it is not possible to start npm/xpm applications.
+  // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+
+  char* cmd = new char [sizeof("cmd.exe /c ") + command.length() + 1];
+  strcpy(cmd, "cmd.exe /c ");
+  strcat(cmd, command.c_str());
+
+  BOOL ret = CreateProcessA(NULL, cmd, NULL, NULL,
                       /* inherit handles */ TRUE, process_flags,
                       NULL, NULL,
-                      &startup_info, &process_info)) {
+                      &startup_info, &process_info);
+  delete []cmd;
+
+  if (!ret) {
     DWORD error = GetLastError();
     if (error == ERROR_FILE_NOT_FOUND) {
       // File (program) not found error is treated as a normal build
@@ -142,7 +154,7 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
       Win32Fatal("CreateProcess", hint);
     }
   }
-
+ 
   // Close pipe channel only used by the child.
   if (child_pipe)
     CloseHandle(child_pipe);
