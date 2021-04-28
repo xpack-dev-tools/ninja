@@ -110,6 +110,7 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
   // Do not prepend 'cmd /c' on Windows, this breaks command
   // lines greater than 8,191 chars.
 
+#if defined(USE_WIN32_CMD_EXE_TO_CREATE_PROCESS)
   // Unfortunately without cmd.exe
   // it is not possible to start npm/xpm applications.
   // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
@@ -118,13 +119,16 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
   strcpy(cmd, "cmd.exe /c \"");
   strcat(cmd, command.c_str());
   strcat(cmd, "\"");
+#endif // USE_WIN32_CMD_EXE_TO_CREATE_PROCESS
 
   BOOL ret = CreateProcessA(NULL, cmd, NULL, NULL,
                       /* inherit handles */ TRUE, process_flags,
                       NULL, NULL,
                       &startup_info, &process_info);
 
+#if defined(USE_WIN32_CMD_EXE_TO_CREATE_PROCESS)
   delete []cmd;
+#endif // USE_WIN32_CMD_EXE_TO_CREATE_PROCESS
 
   if (!ret) {
     DWORD error = GetLastError();
