@@ -115,24 +115,54 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
   // npm/xpm applications which use a .cmd shim to forward the
   // call to the .exe file.
 
-  char* cmd = new char [sizeof("cmd.exe /c \"\"") + command.length() + 1];
-  strcpy(cmd, "cmd.exe /c \"");
-  strcat(cmd, command.c_str());
-  strcat(cmd, "\"");
+  std::string app;  // String to collect the application name.
 
-  // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
-  BOOL ret = CreateProcessA(NULL, cmd, NULL, NULL,
-                      /* inherit handles */ TRUE, process_flags,
-                      NULL, NULL,
-                      &startup_info, &process_info);
+  std::size_t i;
+  for (i = 0; i < command.length() && command[i] == ' '; ++i) {
+    ;  // Skip initial spaces, if any.
+  }
+  for (; i < command.length() && command[i] != ' '; ++i) {
+    if (command[i] == '"') {
+      ++i;  // Skip first quotes
+      for (; i < command.length() && command[i] != '"'; ++i) {
+        app.push_back(std::tolower(command[i]));
+      }
+      continue;
+    }
+    app.push_back(std::tolower(command[i]));
+  }
 
-  delete []cmd;
+  BOOL ret;
+
+  // fprintf(stderr, "<<<<%s>>>>\n", app.c_str());
+
+  if (app.length() > 4 &&
+      strncmp(app.c_str() + app.length() - 4, ".exe", 4) == 0) {
+    // If explicit .exe, create process directly.
+    ret = CreateProcessA(NULL, (char*)command.c_str(), NULL, NULL,
+                         /* inherit handles */ TRUE, process_flags, NULL, NULL,
+                         &startup_info, &process_info);
+  } else {
+    // For any other name, wrap it into a cmd.exe.
+    char* cmd = new char[sizeof("cmd.exe /c \"\"") + command.length() + 1];
+    strcpy(cmd, "cmd.exe /c \"");
+    strcat(cmd, command.c_str());
+    strcat(cmd, "\"");
+
+    // fprintf(stderr, "<<<%s>>>\n", cmd);
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
+    ret = CreateProcessA(NULL, cmd, NULL, NULL,
+                         /* inherit handles */ TRUE, process_flags, NULL, NULL,
+                         &startup_info, &process_info);
+
+    delete[] cmd;
+  }
 #else
   BOOL ret = CreateProcessA(NULL, command.c_str(), NULL, NULL,
-                      /* inherit handles */ TRUE, process_flags,
-                      NULL, NULL,
-                      &startup_info, &process_info);
-#endif // USE_WIN32_CMD_EXE_TO_CREATE_PROCESS
+                            /* inherit handles */ TRUE, process_flags, NULL,
+                            NULL, &startup_info, &process_info);
+#endif  // USE_WIN32_CMD_EXE_TO_CREATE_PROCESS
 
   if (!ret) {
     DWORD error = GetLastError();
@@ -164,7 +194,7 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
       Win32Fatal("CreateProcess", hint);
     }
   }
- 
+
   // Close pipe channel only used by the child.
   if (child_pipe)
     CloseHandle(child_pipe);
