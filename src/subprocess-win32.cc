@@ -114,8 +114,12 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
   // Unfortunately without cmd.exe it is not possible to start
   // npm/xpm applications which use a .cmd shim to forward the
   // call to the .exe file.
+  // To make things worse, some invocations do not even have the .cmd
+  // extension. Thus, the safe rule is to identify only .exe to be passed
+  // directly, the rest being passed via a cmd.exe.
 
-  std::string app;  // String to collect the application name.
+  // String to collect the application name, to test the extension.
+  std::string executable;
 
   std::size_t i;
   for (i = 0; i < command.length() && command[i] == ' '; ++i) {
@@ -125,38 +129,41 @@ bool Subprocess::Start(SubprocessSet* set, const string& command) {
     if (command[i] == '"') {
       ++i;  // Skip first quotes
       for (; i < command.length() && command[i] != '"'; ++i) {
-        app.push_back(std::tolower(command[i]));
+        executable.push_back(std::tolower(command[i]));
       }
       continue;
     }
-    app.push_back(std::tolower(command[i]));
+    executable.push_back(std::tolower(command[i]));
   }
 
   BOOL ret;
 
-  // fprintf(stderr, "<<<<%s>>>>\n", app.c_str());
-
-  if (app.length() > 4 &&
-      strncmp(app.c_str() + app.length() - 4, ".exe", 4) == 0) {
+  // fprintf(stderr, "<<<<%s>>>>\n", executable.c_str());
+  std::string extension = ".exe";
+  if (executable.length() > extension.length() &&
+      executable.substr(executable.length() - extension.length()) ==
+          extension) {
     // If explicit .exe, create process directly.
     ret = CreateProcessA(NULL, (char*)command.c_str(), NULL, NULL,
                          /* inherit handles */ TRUE, process_flags, NULL, NULL,
                          &startup_info, &process_info);
   } else {
-    // For any other name, wrap it into a cmd.exe.
-    char* cmd = new char[sizeof("cmd.exe /c \"\"") + command.length() + 1];
-    strcpy(cmd, "cmd.exe /c \"");
-    strcat(cmd, command.c_str());
-    strcat(cmd, "\"");
+    // For anything else (like .cmd or no extension at all),
+    // invoke it via a cmd.exe.
+    std::string cmd_command;
+    cmd_command.append("cmd.exe /c ");
+    cmd_command.push_back('"');
+    // Windows seems capable of parsing inner quotes, so there is
+    // no need to explicitly escape them.
+    cmd_command.append(command);
+    cmd_command.push_back('"');
 
-    // fprintf(stderr, "<<<%s>>>\n", cmd);
+    // fprintf(stderr, "<<<%s>>>\n", cmd_command.c_str());
 
     // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessa
-    ret = CreateProcessA(NULL, cmd, NULL, NULL,
+    ret = CreateProcessA(NULL, (char*)cmd_command.c_str(), NULL, NULL,
                          /* inherit handles */ TRUE, process_flags, NULL, NULL,
                          &startup_info, &process_info);
-
-    delete[] cmd;
   }
 #else
   BOOL ret = CreateProcessA(NULL, command.c_str(), NULL, NULL,
